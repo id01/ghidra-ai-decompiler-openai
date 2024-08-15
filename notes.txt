@@ -1,0 +1,7 @@
+First, we have the crawler API - runs AI on each decompiled function to name all the variables and add comments. Tries to guess the name and type of each global variable referenced as well.
+The crawler API should make a guess on what structs and global variables are there.
+
+Note: We need to be able to map the structs/global vars from the original decompiled name/address to the generated name for each function. <-- maybe we should curate a dataset manually with like 10k entries?
+
+Next, we have the global var guesser API - synthesizes the global var guesses <-- this includes setting the data type(s) and name
+Next, we have the struct guesser API - synthesizes the struct guesses <-- this includes setting the data type(s) and names

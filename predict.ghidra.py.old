@@ -1,0 +1,128 @@
+import Queue
+
+from ghidra.util.graph import DirectedGraph
+from ghidra.util.graph import Edge
+from ghidra.util.graph import Vertex
+from ghidra.app.decompiler import DecompInterface
+from ghidra.util.task import ConsoleTaskMonitor
+
+# Reverse engineer a function using AI
+def reverseFunction(cCode):
+	pass # TODO: Implement server API
+
+# If a function is 10 lines or less (including all outside-function whitespace and brace whitespace; 7 lines is an empty function with just return), is not an export, and doesn't refer to more than one func, it is a "short func" and should be rolled into its parent functions for context, then recombined later
+#def getShortFuncRefs(func, code):
+#	if func.getEntryPoint() in exportAddrs or code.count('\n') > 10:
+#		return None
+#	vertexes = digraph.getVerticesHavingReferent(func) # Should only be 1 but we can handle more
+#	if vertexes is None or len(vertexes) == 0:
+#		raise ValueError("Function %s not found in graph!" % str(func))
+#	refs = []
+#	for v in vertexes:
+#		refs += digraph.getChildren(v)
+#		if len(refs) > 1:
+#			return None
+#	return refs
+
+# Get address of offset
+def getAddress(offset):
+	return currentProgram.getAddressFactory().getDefaultAddressSpace().getAddress(offset)
+
+# Create function call graph
+digraph = DirectedGraph()
+listing = currentProgram.getListing()
+fm = currentProgram.getFunctionManager()
+
+funcs = fm.getFunctions(True) # True mean iterate forward
+for func in funcs: 
+	# Add function vertices
+	print("Function: {} @ 0x{}".format(func.getName(), func.getEntryPoint())) # FunctionDB
+	digraph.add(Vertex(func))
+	
+	# Add edges for static calls
+	entryPoint = func.getEntryPoint()
+	instructions = listing.getInstructions(entryPoint, True)
+	for instruction in instructions:
+		addr = instruction.getAddress()
+		oper = instruction.getMnemonicString()
+		if oper == "CALL":
+			print("    0x{} : {}".format(addr, instruction))
+			flows = instruction.getFlows()
+			if len(flows) == 1:
+				target_addr = "0x{}".format(flows[0])
+				digraph.add(Edge(Vertex(func.getEntryPoint()), Vertex(getAddress(target_addr))))
+
+# Get the symbol table of the current program
+symtab = currentProgram.getSymbolTable()
+
+## Iterate the entry point addresses to get the relative symbol.
+## Print the symbol name if successfully got.
+#for addr in exportAddrs:
+#    sym = sm.getPrimarySymbol(addr)
+#    if(sym is not None):
+#        print(sym.getName())
+#
+#print("DiGraph info:")
+#edges = digraph.edgeIterator()
+#while edges.hasNext():
+#	edge = edges.next()
+#	from_vertex = edge.from()
+#	to_vertex = edge.to()
+#	print("  Edge from {} to {}".format(from_vertex, to_vertex))
+#
+#vertices = digraph.vertexIterator()
+#while vertices.hasNext():
+#	vertex = vertices.next()
+#	print("  Vertex: {} (key: {})".format(vertex, vertex.key()))
+
+# Get all external entry points.
+# This is an iterator of addresses for exports.
+exportAddrs = set(symtab.getExternalEntryPointIterator())
+
+# Run BFS down the graph to make them into a list in the reverse of the order we want to analyze them
+toCrawl = Queue.Queue()
+crawled = set()
+toAnalyze = []
+for addr in exportAddrs:
+	currentFunc = fm.getFunctionAt(addr)
+	if currentFunc is not None:
+		toCrawl.put(currentFunc.getEntryPoint())
+		crawled.add(currentFunc.getEntryPoint())
+
+while not toCrawl.empty():
+	currentAddr = toCrawl.get()
+	if currentAddr is not None:
+		currentFunc = fm.getFunctionAt(currentAddr)
+		if not currentFunc.thunk and not currentFunc.external:
+			toAnalyze.append(currentFunc)
+		for currentVertex in digraph.getVerticesHavingReferent(currentAddr):
+			for nextVertex in digraph.getChildren(currentVertex):
+				nextAddr = nextVertex.referent()
+				if nextAddr not in crawled:
+					toCrawl.put(nextAddr)
+					crawled.add(nextAddr)
+
+# Open the decompiler
+#ifc = DecompInterface()
+#ifc.openProgram(currentProgram)
+
+# Reverse the order and analyze the functions in that order
+# NOTE: We should probably ensure that all functions are not empty and not compiler-generated (so we don't need to make as many calls to the AI)
+#shortFuncCode = {}
+#shortFuncRefs = {}
+for func in toAnalyze[::-1]:
+	preprocess_function(func)
+#	code = ifc.decompileFunction(func, 0, ConsoleTaskMonitor()).getDecompiledFunction().getC()
+#	refs = getShortFuncRefs(func, code)
+#	if refs is None: # Long func. Actually analyze, roll in the short funcs
+#		pass # TODO: Implement
+#	else: # Short func. Just roll it into the larger funcs
+#		shortFuncCode[func.getEntryPoint()] = code
+#		refResult = []
+#		# Get all decendants of this function and their descendants
+#		for v in refs:
+#			refAddr = v.referent()
+#			if refAddr in shortFuncRefs:
+#				refResult += shortFuncRefs[refAddr.referent()]
+#			refResult.append(refAddr)
+#		shortFuncRefs[func.getEntryPoint()] = refResult

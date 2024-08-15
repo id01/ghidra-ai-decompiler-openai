@@ -1,3 +1,5 @@
+(Later version ideas)
+
 First, we have the crawler API - runs AI on each decompiled function to name all the variables and add comments. Tries to guess the name and type of each global variable referenced as well.
 The crawler API should make a guess on what structs and global variables are there.
 
